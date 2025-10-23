@@ -1,0 +1,29 @@
+[[source]]
+url = "https://pypi.org/simple"
+verify_ssl = true
+name = "pypi"
+
+[packages]
+googletrans = "*"
+numpy = "*"
+pyaudio = "*"
+pynacl = "*"
+ffmpeg = "*"
+requests = "*"
+yt-dlp = "*"
+wikipedia-api = "*"
+deep-translator = "*"
+feedparser = "*"
+google-generativeai = "*"
+beautifulsoup4 = "*"
+python-dotenv = "*"
+speechrecognition = "*"
+pydub = "*"
+gtts = "*"
+"discord.py" = {extras = ["voice"], version = "*"}
+
+[dev-packages]
+
+[requires]
+python_version = "3.11"
+python_full_version = "3.11.1"
