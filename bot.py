@@ -31,5 +31,9 @@ async def main():
     print(f"Token loaded: {token}")
     await bot.start(token)
 
-if __name__ == "__main__":
-    asyncio.run(main())
+try:
+    if __name__ == "__main__":
+        asyncio.run(main())
+        
+except KeyboardInterrupt:
+    print("\n🛑 Bot detenido manualmente desde VS Code.")
