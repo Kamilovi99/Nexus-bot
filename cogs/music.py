@@ -41,29 +41,43 @@ class Music(commands.Cog, name="🎵 Música"):
         self.bot = bot
         self.queues: Dict[int, List[dict]] = {}
         self.now_playing: Dict[int, dict] = {}
+        self.loop_song: Dict[int, bool] = {}
+        self.loop_queue: Dict[int, bool] = {}
+        self.played_history: Dict[int, List[dict]] = {}
 
     def ensure_queue(self, guild_id: int):
         if guild_id not in self.queues:
             self.queues[guild_id] = []
+        if guild_id not in self.played_history:
+            self.played_history[guild_id] = []
 
     async def _play_next_for_guild(self, guild_id: int):
         queue = self.queues.get(guild_id, [])
         guild = self.bot.get_guild(guild_id)
         if not guild:
-            print(f"[music] Guild {guild_id} no encontrada.")
             return
-
         vc = discord.utils.get(self.bot.voice_clients, guild=guild)
 
-        if not queue or not vc:
-            self.now_playing.pop(guild_id, None)
+        if not vc:
             return
 
-        song = queue.pop(0)
+        if self.loop_song.get(guild_id) and guild_id in self.now_playing:
+            song = self.now_playing[guild_id]
+        else:
+            if not queue:
+                if self.loop_queue.get(guild_id) and self.played_history[guild_id]:
+                    queue.extend(self.played_history[guild_id])
+                    self.played_history[guild_id].clear()
+                else:
+                    self.now_playing.pop(guild_id, None)
+                    return
+            song = queue.pop(0)
+
         self.now_playing[guild_id] = song
+        self.played_history[guild_id].append(song)
+
         stream_url = song.get("stream_url")
         if not stream_url:
-            print(f"[music] No se encontró stream_url para {song.get('title')}")
             await asyncio.sleep(0)
             await self._play_next_for_guild(guild_id)
             return
@@ -80,9 +94,7 @@ class Music(commands.Cog, name="🎵 Música"):
                 self.bot.loop.call_soon_threadsafe(asyncio.create_task, self._play_next_for_guild(guild_id))
 
             vc.play(source, after=after_play)
-            print(f"[music] Reproduciendo {song.get('title')} en guild {guild_id}")
 
-            # 👇 CAMBIO: Enviar embed cuando comienza la reproducción
             embed = discord.Embed(
                 title="🎶 Reproduciendo ahora",
                 description=f"[{song.get('title')}]({song.get('webpage_url')})",
@@ -92,10 +104,7 @@ class Music(commands.Cog, name="🎵 Música"):
             requester = guild.get_member(requester_id)
             if requester:
                 embed.set_footer(text=f"Solicitado por {requester.display_name}")
-            else:
-                embed.set_footer(text="Reproducción automática")
 
-            # Buscar canal de texto para enviar el embed
             text_channels = [c for c in guild.text_channels if c.permissions_for(guild.me).send_messages]
             if text_channels:
                 await text_channels[0].send(embed=embed)
@@ -104,8 +113,9 @@ class Music(commands.Cog, name="🎵 Música"):
             print(f"[music] Excepción al reproducir: {e}")
             await asyncio.sleep(0)
             await self._play_next_for_guild(guild_id)
-
-    # ---------- Comandos ---------- #
+            
+    # ------------- Comandos ------------- #
+    # --- Hacer de que el bot se una y salga del canal de voz --- #
     @commands.command(name="join", aliases=["unir"])
     async def join(self, ctx):
         if not ctx.author.voice:
@@ -127,11 +137,11 @@ class Music(commands.Cog, name="🎵 Música"):
         else:
             await ctx.send("ℹ️ No estoy en un canal de voz.")
 
+    # --- Saltar a la siguiente canción --- #
     @commands.command(name="play", aliases=["p", "sonar"])
     async def play(self, ctx, *, query: str):
         if not ctx.author.voice:
             return await ctx.send("❌ Debes estar en un canal de voz.")
-
         if not ctx.voice_client:
             await ctx.invoke(self.join)
 
@@ -169,6 +179,7 @@ class Music(commands.Cog, name="🎵 Música"):
             await ctx.send(f"❌ Ocurrió un error: {e}")
             print(f"[music] Error en play: {e}")
 
+    # ⏭️ --- Saltar a la siguiente canción --- #
     @commands.command(name="skip", aliases=["saltar"])
     async def skip(self, ctx):
         if ctx.voice_client and ctx.voice_client.is_playing():
@@ -177,6 +188,67 @@ class Music(commands.Cog, name="🎵 Música"):
         else:
             await ctx.send("ℹ️ No hay nada que saltar.")
 
+    # 🔂 --- Hacer de que la reproducción se repita en bucle --- #
+    @commands.command(name="loop", aliases=["bucle"])
+    async def loop_cmd(self, ctx):
+        gid = ctx.guild.id
+        state = self.loop_song.get(gid, False)
+        self.loop_song[gid] = not state
+        msg = "🔂 Bucle de **canción actual** activado." if not state else "🚫 Bucle de canción desactivado."
+        await ctx.send(msg)
+
+    # 🔂 --- Hacer de que la lista se repita en bucle --- #
+    @commands.command(name="loopqueue", aliases=["buclecola"])
+    async def loop_queue_cmd(self, ctx):
+        gid = ctx.guild.id
+        state = self.loop_queue.get(gid, False)
+        self.loop_queue[gid] = not state
+        msg = "🔁 Bucle de **cola completa** activado." if not state else "🚫 Bucle de cola desactivado."
+        await ctx.send(msg)
+
+    # 🔄️ --- Reiniciar la canción actual --- #
+    @commands.command(name="replay", aliases=["reiniciar"])
+    async def restart(self, ctx):
+        gid = ctx.guild.id
+        song = self.now_playing.get(gid)
+        if not song:
+            return await ctx.send("❌ No hay canción actual.")
+        self.queues[gid].insert(0, song)
+        ctx.voice_client.stop()
+        await ctx.send(f"🔁 Reiniciando: **{song['title']}**")
+        
+    # ⏮️ --- Volver a la anterior canción --- #
+    @commands.command(name="previous", aliases=["anterior"])
+    async def previous_cmd(self, ctx):
+        gid = ctx.guild.id
+        history = self.played_history.get(gid, [])
+        if len(history) < 2:
+            return await ctx.send("⚠️ No hay una canción anterior para reproducir.")
+        prev_song = history[-2]
+        history.pop()
+        self.queues[gid].insert(0, prev_song.copy())
+        ctx.voice_client.stop()
+        await ctx.send(f"⏮️ Reproduciendo la canción anterior: **{prev_song['title']}**")
+
+    # --- ⏸️ Pausar canción actual --- #
+    @commands.command(name="pause", aliases=["pausar"])
+    async def pause_cmd(self, ctx):
+        vc = ctx.voice_client
+        if not vc or not vc.is_playing():
+            return await ctx.send("⚠️ No hay ninguna canción reproduciéndose.")
+        vc.pause()
+        await ctx.send("⏸️ Reproducción pausada.")
+
+    # --- ▶️ Reanudar canción pausada --- #
+    @commands.command(name="resume", aliases=["reanudar"])
+    async def resume_cmd(self, ctx):
+        vc = ctx.voice_client
+        if not vc or not vc.is_paused():
+            return await ctx.send("⚠️ No hay ninguna canción pausada.")
+        vc.resume()
+        await ctx.send("▶️ Reproducción reanudada.")
+
+    # --- Ver la lista de reproducción --- #
     @commands.command(name="queue", aliases=["q", "cola"])
     async def queue_cmd(self, ctx):
         q = self.queues.get(ctx.guild.id, [])
@@ -191,18 +263,23 @@ class Music(commands.Cog, name="🎵 Música"):
             embed.description = "La cola está vacía."
         await ctx.send(embed=embed)
 
-    @commands.command(name="replay", aliases=["anterior", "volver"])
-    async def replay(self, ctx):
-        now = self.now_playing.get(ctx.guild.id)
-        if not now:
-            return await ctx.send("❌ No hay canción actual para repetir.")
-        self.ensure_queue(ctx.guild.id)
-        self.queues[ctx.guild.id].insert(0, now.copy())
-        await ctx.send(f"🔁 Reproduciendo otra vez: **{now.get('title')}**")
+    # ⏹️ --- Detener todo la reproducción --- #
+    @commands.command(name="stop", aliases=["detener"])
+    async def stop_cmd(self, ctx):
         vc = ctx.voice_client
-        if not vc.is_playing():
-            self.bot.loop.create_task(self._play_next_for_guild(ctx.guild.id))
+        if not vc:
+            return await ctx.send("⚠️ No estoy conectado a ningún canal de voz.")
+        if vc.is_playing():
+            vc.stop()
 
+        gid = ctx.guild.id
+        self.queues[gid] = []
+        self.played_history[gid] = []
+        self.now_playing.pop(gid, None)
+        self.loop_song[gid] = False
+        self.loop_queue[gid] = False
+
+        await ctx.send("⏹️ Se detuvo la reproducción y se limpió la cola por completo.")
 
 async def setup(bot):
     await bot.add_cog(Music(bot))
