@@ -188,7 +188,7 @@ class Music(commands.Cog, name="🎵 Música"):
         else:
             await ctx.send("ℹ️ No hay nada que saltar.")
 
-    # 🔂 --- Hacer de que la reproducción se repita en bucle --- #
+    # 🔂 --- Hacer de que la canción actual se repita en bucle --- #
     @commands.command(name="loop", aliases=["bucle"])
     async def loop_cmd(self, ctx):
         gid = ctx.guild.id
@@ -197,7 +197,7 @@ class Music(commands.Cog, name="🎵 Música"):
         msg = "🔂 Bucle de **canción actual** activado." if not state else "🚫 Bucle de canción desactivado."
         await ctx.send(msg)
 
-    # 🔂 --- Hacer de que la lista se repita en bucle --- #
+    # 🔂 --- Hacer de que la cola se repita en bucle --- #
     @commands.command(name="loopqueue", aliases=["buclecola"])
     async def loop_queue_cmd(self, ctx):
         gid = ctx.guild.id
@@ -216,7 +216,7 @@ class Music(commands.Cog, name="🎵 Música"):
         self.queues[gid].insert(0, song)
         ctx.voice_client.stop()
         await ctx.send(f"🔁 Reiniciando: **{song['title']}**")
-        
+
     # ⏮️ --- Volver a la anterior canción --- #
     @commands.command(name="previous", aliases=["anterior"])
     async def previous_cmd(self, ctx):
@@ -248,7 +248,7 @@ class Music(commands.Cog, name="🎵 Música"):
         vc.resume()
         await ctx.send("▶️ Reproducción reanudada.")
 
-    # --- Ver la lista de reproducción --- #
+    # --- Ver la cola --- #
     @commands.command(name="queue", aliases=["q", "cola"])
     async def queue_cmd(self, ctx):
         q = self.queues.get(ctx.guild.id, [])
@@ -263,7 +263,7 @@ class Music(commands.Cog, name="🎵 Música"):
             embed.description = "La cola está vacía."
         await ctx.send(embed=embed)
 
-    # ⏹️ --- Detener todo la reproducción --- #
+    # ⏹️ --- Detener toda la cola--- #
     @commands.command(name="stop", aliases=["detener"])
     async def stop_cmd(self, ctx):
         vc = ctx.voice_client
